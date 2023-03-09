@@ -3,11 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { setContext } from '@apollo/client/link/context';
 import {
+    split,
     ApolloProvider,
     ApolloClient,
     createHttpLink,
-    InMemoryCache
+    InMemoryCache,
 } from '@apollo/client';
+import { WebSocketLink } from '@apollo/client/link/ws';
+import { getMainDefinition } from '@apollo/client/utilities';
 import './styles/index.css';
 import App from './components/App';
 import { AUTH_TOKEN } from './constants';
@@ -29,9 +32,34 @@ const authLink = setContext((_, { headers }) => {
     };
 });
 
+// WebSocketLink that represents the WebSocket connection
+// ws (WebSocket) protocol instead of http
+const wsLink = new WebSocketLink({
+    uri: `ws://localhost:4000/graphql`,
+    options: {
+        reconnect: true,
+        connectionParams: {
+            authToken: localStorage.getItem(AUTH_TOKEN)
+        }
+    }
+});
+
+// split for proper “routing” of the requests
+const link = split(
+    ({ query }) => {
+        const { kind, operation } = getMainDefinition(query);
+        return (
+            kind === 'OperationDefinition' &&
+            operation === 'subscription'
+        );
+    },
+    wsLink,
+    authLink.concat(httpLink)
+);
+
 // We instantiate ApolloClient by passing in the httpLink and a new instance of an InMemoryCache.
 const client = new ApolloClient({
-    link: authLink.concat(httpLink),
+    link,
     cache: new InMemoryCache()
 });
 
